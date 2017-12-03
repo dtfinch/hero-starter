@@ -1,186 +1,281 @@
-/* eslint no-unused-vars: 0 */
+
+
+//var genes = [1.01,1.12,0.86,1.18,1.53,1,1,1];
+//var genes = [1.07,1.41,1.22,1.43,2.40,1,0.67,0.83];
+//var genes = [1.01, 1.32, 1.16, 1.58, 2.70, 1.00, 0.47, 0.79];
+var genes = [1.04, 1.30, 1.12, 1.53, 2.63, 1, 0.48, 0.81];
 /*
+for(var i=0;i<8;i++) {
+	genes[i] = Math.round(genes[i]*(0.9+0.2*Math.random())*100)/100;
+}
+console.log("genes = ["+genes.join(", ")+"];")*/
 
-Strategies for the hero are contained within the "moves" object as
-name-value pairs, like so:
+var gameData, helpers;
+var myHero;
 
-    //...
-    ambusher : function(gamedData, helpers){
-      // implementation of strategy.
-    },
-    heWhoLivesToFightAnotherDay: function(gamedData, helpers){
-      // implementation of strategy.
-    },
-    //...other strategy definitions.
+function getTeamScore(heroes, hero) {
+	var score=0;
+	for(var i=0; i<heroes.length; i++) {
+		var h = heroes[i];
+		if(!h.dead) {
+			var s = h.health + genes[6]*50 + genes[7]*30*h.mineCount;
+			if(h.id===hero.id) s+=200; //value our life above others
+			//if(isNaN(s)) throw "wtf score " + JSON.stringify(h);
+			
+			score += s * ((h.team===hero.team)?1:-1);
+		}
+	}
+	return score;
+}
 
-The "moves" object only contains the data, but in order for a specific
-strategy to be implemented we MUST set the "move" variable to a
-definite property.  This is done like so:
+var dossier;
 
-move = moves.heWhoLivesToFightAnotherDay;
+//tries to classify a hero and guess their next move
+function mimic(hero, board) {
+	var d = dossier[hero.id];
 
-You MUST also export the move function, in order for your code to run
-So, at the bottom of this code, keep the line that says:
+	var miner = hero.diamondsEarned>0;
+	var healer = hero.healthGiven>0;
+	if(hero.damageDone%20===10) d.fighter = true; //distinguish direct attacks from indirect
+	var fighter = d.fighter;
+	var target;
+	
+	if(!healer && !miner && !fighter) {
+		//aggressor is so common, we want to just assume that until we observe better
+		fighter = true;
+	}
+	
+	var well = helpers.findFirst(hero, board, helpers.isWell);
+	
+	var mine = miner && helpers.findFirst(hero, board, helpers.isOtherMine);
+	
+	if(fighter) {
+		var enemy = helpers.findFirst(hero, board, helpers.isEnemy);
+		
+		//chase weakest of nearest enemies
+		if(!healer && !miner) {
+			//aggressor mode, the most common fork
+			d.type = "aggressor";
+			if(hero.health<=30) {
+				target = well;
+			} else {
+				target = enemy;
+			}
+		} else {
+			//assume something wiser
+			d.type = "adventurer";
+			
+			if(well && hero.health<((well.distance===1)?100:50)) {
+				target = well;
+			} else if(enemy) {
+				if(healer) {
+					//may heal adjacent allies
+					var ally = helpers.findFirst(hero, board, helpers.isAlly);
+					if(ally && ally.health<=60) target = ally;
+				}
+				if(miner) {
+					//may chase mine if full health
+					if(hero.health===100) target = mine;
+				}
+				
+				if(!target || enemy.distance<target.distance) {
+					var weakerEnemy = helpers.findFirst(hero, board, helpers.isWeakerEnemy);
+					if(weakerEnemy && weakerEnemy.distance<=enemy.distance) {
+						target = weakerEnemy;
+					} else {
+						target = enemy;
+					}
+				}
+			}
+			
+			
+		}
+	} else {
+		
+		if(healer) {
+			//assume priest
+			d.type = "priest";
+			
+			if(well && hero.health<((well.distance===1)?100:60)) { //ugly duplication
+				target = well;
+			} else {
+				target = helpers.findFirst(hero, board, helpers.isAlly);
+			}
+		} else if(miner) {
+			//assume safeDiamondMiner
+			d.type = "safeDiamondMiner";
+			if(well && hero.health<((well.distance===1)?100:40)) {
+				target = well;
+			} else {
+				target = mine;
+			}
+		} else { //dead code for now
+			d.type = "survivor";
+			if(well) 
+				target = well;
+		}
+	}
 
-module.exports = move;
+	
+	if(target) return target.dir;
+	return "Stay";
+}
 
-The "move" function must return "North", "South", "East", "West", or "Stay"
-(Anything else will be interpreted by the game as "Stay")
+var predictions = {};
+/*var lastHeroes;
+var lastPrediction;*/
+var allHits=0, allMisses=0;
 
-The "move" function should accept two arguments that the website will be passing in:
-- a "gameData" object which holds all information about the current state
-  of the battle
-- a "helpers" object, which contains useful helper functions
-- check out the helpers.js file to see what is available to you
+function evaluate(direction) {
+	var game = helpers.clone(gameData);
+	
+	var mover = function(hero, board) {
+		if(hero.id===myHero.id) {
+			return direction;
+		} else {
+			return mimic(hero, board);
+		}
+	}
+	
+	//simulate a round of turns
+	helpers.simulate(game, mover);
+	
+	predictions[direction] = game.heroes; 
+	
+	return getTeamScore(game.heroes, myHero);
+}
 
-*/
+var lastMove="Stay";
 
-// Strategy definitions
-var moves = {
-    // Aggressor
-    aggressor: function (gameData, helpers) {
-        // Here, we ask if your hero's health is below 30
-        if (gameData.activeHero.health <= 30){
-            // If it is, head towards the nearest health well
-            return helpers.findNearestHealthWell(gameData);
-        } else {
-            // Otherwise, go attack someone...anyone.
-            return helpers.findNearestEnemy(gameData);
-        }
-    },
+function evalMoves() {
+	var scores = {};
+	
+	/*
+		Short range strategy:
+		For each direction, we guess how the next round of turns will play out,
+		then calculate a team score.
+	*/
+	for(var dir in helpers.Directions) {
+		if(helpers.validMove(gameData.board, myHero, dir)) {
+			scores[dir] = evaluate(dir);
+			//if(isNaN(scores[dir])) throw "wtf evaluate";
+			if(dir==="Stay") scores[dir]-=5*genes[0]; // bias against staying in one place
+		}
+	}
+	
+	/*
+		Long range strategy:
+		Find all reachable targets to offset scores for their respective directions.
+	*/
+	var targets = helpers.pathFind(myHero, gameData.board, true, function(tile) {
+		return helpers.isAlly(tile) || helpers.isEnemy(tile) ||
+			helpers.isOtherMine(tile, myHero) || helpers.isWell(tile);
+	});
+	var diamondBonus = genes[3]*(0.25+gameData.turn/800);
+	for(var i=0; i<targets.length; i++) {
+		var target = targets[i];
+		var tile = target.tile;
+		var value = 0;
+		if(helpers.isAlly(tile)) {
+			value = genes[1]*(100-tile.health);
+		} else if(helpers.isEnemy(tile)) {
+			value = genes[2]*Math.max(30+myHero.health-tile.health, 0);
+		} else if(helpers.isOtherMine(tile, myHero)) {
+			value = diamondBonus*Math.max(myHero.health-20, 0);
+		} else if(helpers.isWell(tile)) {
+			value = genes[4]*(100-myHero.health);
+		} else {
+			//throw "wtf "+JSON.stringify(target);
+		}
+		//if(!helpers.Directions[target.dir]) throw "wtf6 "+JSON.stringify(target);
+		//if(!target.distance) throw "wtf distance";
+		//if(isNaN(value)) throw "wtf value";
+		
+		if(scores.hasOwnProperty(target.dir)) { // skip if validMove() identified the direction as pointless
+			scores[target.dir] += genes[5]*0.1*value/target.distance;
+		}
+	}
+	
+	var avoid = helpers.Inverse[lastMove];
+	if(scores.hasOwnProperty(avoid)) scores[avoid]-=5*genes[0];  // bias against reversing our last turn
+	
+	
+	return scores;
+}
 
-    // Health Nut
-    healthNut: function (gameData, helpers) {
-        // Here, we ask if your hero's health is below 75
-        if (gameData.activeHero.health <= 75){
-            // If it is, head towards the nearest health well
-            return helpers.findNearestHealthWell(gameData);
-        } else {
-            // Otherwise, go mine some diamonds!!!
-            return helpers.findNearestNonTeamDiamondMine(gameData);
-        }
-    },
 
-    // Balanced
-    balanced: function (gameData, helpers){
-        // Here we determine if it's an even or odd turn for your hero;
-        if ((gameData.turn / 2) % 2) {
-            // If it is even, act like an an Aggressor
-            return moves.aggressor(gameData, helpers);
-        } else {
-            // If it is odd, act like a Priest
-            return moves.priest(gameData, helpers);
-        }
-    },
 
-    // The "Northerner"
-    // This hero will walk North.  Always.
-    northener: function (gameData, helpers) {
-        return 'North';
-    },
 
-    // The "Blind Man"
-    // This hero will walk in a random direction each turn.
-    blindMan: function (gameData, helpers) {
-        var choices = ['North', 'South', 'East', 'West'];
-        return choices[Math.floor(Math.random()*4)];
-    },
 
-    // The "Priest"
-    // This hero will heal nearby friendly champions.
-    priest: function (gameData, helpers) {
-        var myHero = gameData.activeHero;
-        if (myHero.health < 60) {
-            return helpers.findNearestHealthWell(gameData);
-        } else {
-            return helpers.findNearestTeamMember(gameData);
-        }
-    },
+function initDossier() {
+	dossier = [];
+	var heroes = gameData.heroes;
+	for(var i=0; i<heroes.length; i++) {
+		dossier[heroes[i].id] = {
+			/*hit:0, miss:0,*/ type:"", fighter: false
+		};
+	}
+}
 
-    // The "Unwise Assassin"
-    // This hero will attempt to kill the closest enemy hero. No matter what.
-    unwiseAssassin: function (gameData, helpers) {
-        var myHero = gameData.activeHero;
-        if (myHero.health < 30) {
-            return helpers.findNearestHealthWell(gameData);
-        } else {
-            return helpers.findNearestEnemy(gameData);
-        }
-    },
+function newGame() {
+	//forget things that we're not supposed to remember between games
+	//so that it doesn't skew hero-crucible testing
+	//console.log("New Game");
+	/*lastPrediction = undefined;
+	lastHeroes = undefined;*/
+	for(var i in dossier) {
+		var d = dossier[i];
+		d.type = "";
+		d.fighter = "";
+	}
+}
 
-    // The "Careful Assassin"
-    // This hero will attempt to kill the closest weaker enemy hero.
-    carefulAssassin: function (gameData, helpers) {
-        var myHero = gameData.activeHero;
-        if (myHero.health < 50) {
-            return helpers.findNearestHealthWell(gameData);
-        } else {
-            return helpers.findNearestWeakerEnemy(gameData);
-        }
-    },
+var lastTurn = 0;
 
-    // The "Safe Diamond Miner"
-    // This hero will attempt to capture enemy diamond mines.
-    safeDiamondMiner: function (gameData, helpers) {
-        var myHero = gameData.activeHero;
+function move(g, h) {
+	(helpers = h).setGameData(gameData = g); // :p
+	myHero = g.activeHero;
+	
+	if(!dossier) initDossier();
+	
+	if(gameData.turn<lastTurn) newGame();
+	
+	/*if(lastPrediction) {
+		helpers.testPrediction(lastPrediction, gameData.heroes, dossier);
+	}*/
+	
+	var scores = evalMoves();
+	var best;
+	for(var n in scores) {
+		//if(isNaN(scores[n])) throw "wtf4";
+		//if(n==="undefined") throw "wtf5";
+		if(!best || scores[n]>scores[best]) best=n;
+	}
+	
+	//if(!best) throw "wtf2";
+	
+	//console.log(best + ": " + scores[best]);
+	
+	lastMove = best;
+	/*lastPrediction = predictions[best];
+	lastHeroes = helpers.clone(gameData.heroes);
+	predictions = {}; //free. kinda pointless*/
+	
+	lastTurn = gameData.turn;
+	
+	
+	//helpers.narrate(myHero, gameData.board, best);
+	
+	return best;
+}
 
-        // Get stats on the nearest health well
-        var healthWellStats = helpers.findNearestObjectDirectionAndDistance(gameData.board, myHero, function (boardTile) {
-            if (boardTile.type === 'HealthWell') {
-                return true;
-            }
-        });
-        var distanceToHealthWell = healthWellStats.distance;
-        var directionToHealthWell = healthWellStats.direction;
 
-        if (myHero.health < 40) {
-            // Heal no matter what if low health
-            return directionToHealthWell;
-        } else if (myHero.health < 100 && distanceToHealthWell === 1) {
-            // Heal if you aren't full health and are close to a health well already
-            return directionToHealthWell;
-        } else {
-            // If healthy, go capture a diamond mine!
-            return helpers.findNearestNonTeamDiamondMine(gameData);
-        }
-    },
 
-    // The "Selfish Diamond Miner"
-    // This hero will attempt to capture diamond mines (even those owned by teammates).
-    selfishDiamondMiner: function (gameData, helpers) {
-        var myHero = gameData.activeHero;
 
-        // Get stats on the nearest health well
-        var healthWellStats = helpers.findNearestObjectDirectionAndDistance(gameData.board, myHero, function (boardTile) {
-            if (boardTile.type === 'HealthWell') {
-                return true;
-            }
-        });
 
-        var distanceToHealthWell = healthWellStats.distance;
-        var directionToHealthWell = healthWellStats.direction;
 
-        if (myHero.health < 40) {
-            // Heal no matter what if low health
-            return directionToHealthWell;
-        } else if (myHero.health < 100 && distanceToHealthWell === 1) {
-            // Heal if you aren't full health and are close to a health well already
-            return directionToHealthWell;
-        } else {
-            // If healthy, go capture a diamond mine!
-            return helpers.findNearestUnownedDiamondMine(gameData);
-        }
-    },
 
-    // The "Coward"
-    // This hero will try really hard not to die.
-    coward: function (gameData, helpers) {
-        return helpers.findNearestHealthWell(gameData);
-    }
-};
 
-// Set our hero's strategy
-var move =  moves.aggressor;
 
-// Export the move function here
+
 module.exports = move;
