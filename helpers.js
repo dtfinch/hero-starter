@@ -18,8 +18,6 @@ var Inverse = {
 };
 
 
-
-
 function addHealth(hero, amount) {
 	hero.health += amount;
 	if(hero.health<0) hero.dead = true; // we don't go as far as the game itself, which would replace the tile with unoccupied/bones
@@ -90,7 +88,6 @@ function simulate(gameData, mover) {
 		var h = heroes[i];
 		if(!h.dead) {
 			heroes[i] = board.tiles[h.distanceFromTop][h.distanceFromLeft];
-			//if(heroes[i].id!==h.id) throw "wtf id";
 		}
 	}
 	
@@ -111,22 +108,26 @@ function simulate(gameData, mover) {
 }
 
 
-function validMove(board, hero, direction) {
-	if(direction==="Stay") return true; //always valid
-	//we consider pointless/null moves to be invalid here
+function getMoveTile(board, hero, direction) {
 	var y = hero.distanceFromTop;
 	var x = hero.distanceFromLeft;
 	var d = Directions[direction];
 	if(d) {
 		var x2=x+d.x, y2=y+d.y;
-		var dest = board.tiles[y2] && board.tiles[y2][x2];
-		if(!dest) return false;
-		if(dest.type==="DiamondMine" && dest.owner && dest.owner.id===hero.id) return false;
-		if(isAlly(dest, hero) && dest.health===100) return false;
-		if(dest.type==="Impassable") return false;
-		return true;
+		return board.tiles[y2] && board.tiles[y2][x2];
 	}
-	return false; //on principle
+}
+
+function validMove(board, hero, direction) {
+	if(direction==="Stay") return true; //always valid
+	var dest = getMoveTile(board, hero, direction);
+	if(!dest) return false;
+	//we consider pointless/null moves to be invalid here
+	if(dest.type==="DiamondMine" && dest.owner && dest.owner.id===hero.id) return false;
+	if(dest.type==="HealthWell" && hero.health===100) return false;
+	if(isAlly(dest, hero) && dest.health===100) return false;
+	if(dest.type==="Impassable") return false;
+	return true;
 }
 
 function clone(c) { return JSON.parse(JSON.stringify(c)); }
@@ -163,6 +164,23 @@ function getAdjacent(tile, board) {
 	return ret;
 }
 
+function getAdjacentFilter(tile, board, filter) {
+	var tiles = board.tiles;
+	var x = tile.distanceFromLeft;
+	var y = tile.distanceFromTop;
+	
+	var ret=[];
+	
+	var t;
+	y>0 && (t = tiles[y-1][x]) && filter(t) && ret.push(t);
+	x+1<board.lengthOfSide && (t = tiles[y][x+1]) && filter(t) && ret.push(t);
+	y+1<board.lengthOfSide && (t = tiles[y+1][x]) && filter(t) && ret.push(t);
+	x>0 && (t = tiles[y][x-1]) && filter(t) && ret.push(t);
+	
+	return ret;
+}
+
+
 function grave(tile) {
 	return (tile.type==="Hero" && tile.dead) || tile.subType==="Bones";
 }
@@ -178,7 +196,6 @@ function hittable(tile) {
 // I'd prefer to be consistent with findNearestObjectDirectionAndDistance if preferGraves is false, hence the reverse loop in pathTrace() and the order of directions in getAdjacent()
 
 function pathTrace(dest, board, preferGraves, source) {
-	//console.log("backtracing");
 	var path = [dest];
 	var now = dest.v;
 	
@@ -188,11 +205,8 @@ function pathTrace(dest, board, preferGraves, source) {
 			var adjacent = getAdjacent(tile, board);
 			var distance = tile.distance-1;
 			tile = undefined;
-			//console.log(""+distance+", "+adjacent.length);
 			for(var i=adjacent.length-1; i>=0; i--) {
-				//console.log(i);
 				var neighbor = adjacent[i];
-				//console.log(JSON.stringify(neighbor));
 				if(neighbor.distance!=distance || neighbor.v!==now || (neighbor!==source && !passable(neighbor))) continue;
 				
 				tile = neighbor;
@@ -201,7 +215,6 @@ function pathTrace(dest, board, preferGraves, source) {
 		} else {
 			tile = tile.p;
 		}
-		//if(!tile) throw "wtf3";
 		path.push(tile);
 	}
 	return path.reverse();
@@ -229,10 +242,7 @@ function pathFind(source, board, preferGraves, filter, limit, maxDist) {
 	source.v = now;
 	source.distance = 0;
 	
-	//console.log("finding");
 	for(;;) {
-		//console.log(queue.length);
-		
 		var index=0;
 		while(index<queue.length) {
 			var tile = queue[index++];
@@ -309,125 +319,6 @@ function isMine(other) {
 	return other.type==="DiamondMine";
 }
 
-/*
-function testPrediction(phs, hs, dossier) {
-	for(var i=0; i<phs.length; i++) {
-		if(!lastHeroes[i].dead) {
-			var ph = phs[i];
-			var h = hs[i];
-			
-			var d = dossier[h.id];
-
-			
-			if((!ph.dead != !h.dead) ||
-				(!ph.dead && !h.dead && h.health!=ph.health) ||
-				ph.distanceFromTop!=h.distanceFromTop ||
-				ph.distanceFromLeft!=h.distanceFromLeft
-			) {
-				d.miss++;
-				
-				switch(h.name) {
-				case "aggressor": //the only bots we hope to predict reliably
-				case "priest":
-				case "safeDiamondMiner":
-					console.log(""+h.id+"/"+h.name+
-						" expected "+ph.health+"/"+ph.distanceFromLeft+","+ph.distanceFromTop+
-						" got "+h.health+"/"+h.distanceFromLeft+","+h.distanceFromTop+
-						" "+(d.hit/(d.hit+d.miss)) + " " + d.type
-						);
-				}
-			} else {
-				d.hit++;
-			}
-			// to track hit/miss rate we need to log who was alive before the prediction
-		}
-	}
-}
-
-
-
-function narrate(hero, board, direction) {
-	var message = hero.name;
-	var dest;
-	if(direction==="Stay") {
-		message += " stays";
-	} else {
-		//we consider pointless/null moves to be invalid here
-		var y = hero.distanceFromTop;
-		var x = hero.distanceFromLeft;
-		var d = helpers.Directions[direction];
-		if(d) {
-			var x2=x+d.x, y2=y+d.y;
-			dest = board.tiles[y2] && board.tiles[y2][x2];
-			if(dest) {
-				switch(dest.type) {
-					case "Unoccupied":
-						message += " moves " + direction;
-						if(dest.subType==="Bones") message += " and digs";
-						break;
-					case "Impassable":
-						message += " smacks tree " + direction;
-						break;
-					case "DiamondMine":
-						message += " takes mine " + direction;
-						if(dest.owner) {
-							if(dest.owner.team!==hero.team) {
-								message += " from enemy "+dest.owner.name;
-							} else {
-								message += " from ally "+dest.owner.name;
-							}
-						}
-						break;
-					case "HealthWell":
-						message += " drinks from well " + direction;
-						if(hero.health===100) message += " but already full";
-						break;
-					case "Hero":
-						if(dest.dead) {
-							message += " raids corpse " + direction;
-						} else {
-							if(dest.team===hero.team) {
-								if(dest.health===100) {
-									message += " shakes hands with " + dest.name;
-								} else {
-									message += " heals " + dest.name;
-								}
-							} else {
-								if(dest.health<=30) {
-									message += " kills " + dest.name;
-								} else {
-									message += " stabs " + dest.name;
-								}
-							}
-							message += " " + direction;
-						}
-						break;
-				}
-			} else {
-				message += " hits border " + direction;
-			}
-		} else {
-			message += " flails";
-		}
-	}
-	var adjacent = helpers.getAdjacent(hero, board);
-	for(var i=0; i<adjacent.length; i++) {
-		var neighbor = adjacent[i];
-		if(helpers.isEnemy(neighbor)) {
-			if(!dest || neighbor!==dest) {
-				if(neighbor.health<=20) {
-					message += ", kills " + neighbor.name;
-				} else {
-					message += ", hits " + neighbor.name;
-				}
-			}
-		}
-	}
-	console.log(message);
-}
-*/
-
-
 
 module.exports = {
 	setGameData: function(g) { gameData = g; },
@@ -446,7 +337,8 @@ module.exports = {
 	validMove: validMove,
 	simulate: simulate,
 	Inverse: Inverse,
-	/*narrate: narrate,
-	testPrediction: testPrediction,*/
-	getAdjacent: getAdjacent
+	getAdjacent: getAdjacent,
+	getMoveTile: getMoveTile,
+	passable: passable,
+	getAdjacentFilter: getAdjacentFilter
 };
