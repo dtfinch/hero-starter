@@ -1,24 +1,30 @@
 
-var genes = [0.91, 1.06, 1.00, 1.47, 2.77, 1.00, 0.51, 0.79, 0.83, 1.21, 0.68, 0.65, 0.069, 0.50];
-/*
-do {
-	for(var i=0;i<genes.length;i++) {
-		var w = 0.1;
-		var a = 1-w/2;
-		genes[i] = Math.round(genes[i]*(a+w*Math.random())*100)/100;
-	}
-} while(Math.random()<0.5);
 
-console.log("genes "+genes.join(", "));
-*/
-
-
+var genes = [
+	0.4819884125390035,
+	0.9583341309829587,
+	2.0507290014359825,
+	2.008260387846138,
+	3.74306582919557,
+	1.937477961631787,
+	0.06576956839401502,
+	0.8110295516581401,
+	0.36722416496286847,
+	2.260243679978618,
+	0.17742850549891068,
+	0.15366954185455245,
+	0.07544872995816881,
+	0.7513572488257364,
+	7.660794189762984,
+	0.4623283984136903,
+	0.212745902199971
+];
 
 var gameData, helpers;
 var myHero;
 var myTurns = 0;
 
-function getTeamScore(game, hero) {
+function getTeamScore(game, hero) { //note that hero is genuine copy, not post-simulation
 	var heroes = game.heroes;
 	var board = game.board;
 	var score=0;
@@ -32,8 +38,10 @@ function getTeamScore(game, hero) {
 					s += Math.min(100-h.health, 30) * genes[13];
 				}
 				
+				var minesTaken = h.mineCount-hero.mineCount;
+				if(minesTaken>0 && hero.health-h.health>20*minesTaken) s-=genes[14]; //penalize taking mines while under attack
 			}
-			s += genes[6]*50 + genes[7]*30*h.mineCount
+			s += genes[6]*50 + genes[7]*30*h.mineCount;
 			
 			score += s * ((h.team===hero.team)?1:-1);
 		}
@@ -157,10 +165,14 @@ function evaluate(direction) {
 	return getTeamScore(game, myHero);
 }
 
+
+
+
 var lastMove="Stay";
 
 function evalMoves() {
 	var scores = {};
+	
 	
 	/*
 		Short range strategy:
@@ -173,7 +185,7 @@ function evalMoves() {
 			if(dir==="Stay") scores[dir]-=5*genes[0]; // bias against staying in one place
 		}
 	}
-	
+
 	/*
 		Long range strategy:
 		Find all reachable targets to offset scores for their respective directions.
@@ -184,23 +196,33 @@ function evalMoves() {
 	});
 	var diamondBonus = genes[3]*(0.25+gameData.turn/800);
 	var best, bestValue;
+	var first = {};
 	for(var i=0; i<targets.length; i++) {
 		var target = targets[i];
 		var tile = target.tile;
 		var value = 0;
+		var kind="???";
 		if(helpers.isAlly(tile)) {
+			kind="ally";
 			value = genes[1]*(100-tile.health);
 			if(tile.healthGiven>0) value += genes[11]*(100-myHero.health); //treat healers like extra semi-wells. made almost no difference in testing :-/
 		} else if(helpers.isEnemy(tile)) {
-			value = genes[2]*Math.max(30+myHero.health-tile.health, 0);
+			kind="enemy";
+			value = Math.max(genes[15]*30+genes[2]*(myHero.health-tile.health), 0);
 		} else if(helpers.isOtherMine(tile, myHero)) {
+			kind="mine";
 			value = diamondBonus*Math.max(myHero.health-20, 0);
 		} else if(helpers.isWell(tile)) {
+			kind="well";
 			value = genes[4]*(100-myHero.health);
 		}
 		
 		if(scores.hasOwnProperty(target.dir)) { // skip if validMove() identified the direction as pointless
-			value /= 1+(target.distance-1)*genes[9];
+			var f = first[kind];
+			if(!f) { f = first[kind] = tile; }
+			var adjustedDistance = target.distance - (f.distance-1)*genes[16]; //discount by nearest so we don't sit in our corner when there are no near targets.
+			
+			value /= 1+(adjustedDistance-1)*genes[9];
 			scores[target.dir] += genes[5]*0.1*value;
 			if(!best || value>bestValue) {
 				best = target; bestValue = value;
@@ -237,9 +259,11 @@ function newGame() {
 
 var lastTurn = 0;
 
-function move(g, h) {
+function move(g, h /*, _genes*/) {
 	(helpers = h).setGameData(gameData = g); // :p
 	myHero = g.activeHero;
+	
+	//if(_genes) genes = _genes; //facilitate training
 	
 	if(!dossier || gameData.turn<lastTurn) newGame();
 	
