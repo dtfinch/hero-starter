@@ -20,7 +20,7 @@ var Inverse = {
 
 function addHealth(hero, amount) {
 	hero.health += amount;
-	if(hero.health<0) hero.dead = true; // we don't go as far as the game itself, which would replace the tile with unoccupied/bones
+	if(hero.health<=0) hero.dead = true; // we don't go as far as the game itself, which would replace the tile with unoccupied/bones
 	if(hero.health>100) hero.health = 100;
 }
 
