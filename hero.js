@@ -1,28 +1,29 @@
 
-
 var genes = [
-	0.37802293116409913,
-	0.9583341309829587,
-	2.025907823302328,
-	2.0656579754180173,
-	3.7164876389086463,
-	1.996129400285316,
-	0.09158933747506957,
-	0.8110295516581401,
-	0.38252678281635966,
-	2.2508242984491473,
-	0.11376696162963498,
-	0.08465331505943297,
-	0.07544872995816881,
-	0.7440678874453605,
-	7.229229844667707,
-	0.4358619846855732,
-	0.2187538124383053
+	0.3706206097630479,
+	0.9425848107179953,
+	1.863658535992049,
+	2.1710105732593603,
+	3.30732998957649,
+	2.1556770971483936,
+	0.08428252797701383,
+	0.8777426906589808,
+	0.3466104675648718,
+	2.3273675097110913,
+	0.10681679298113093,
+	0.07915555473997836,
+	0.07782929309198723,
+	0.7691371890852272,
+	7.888539711567676,
+	0.4055532002814802,
+	0.2425354868651016,
+	0.2521085023849737
 ];
 
 var gameData, helpers;
 var myHero;
 var myTurns = 0;
+var numReverse = 0;
 
 function getTeamScore(game, hero) { //note that hero is genuine copy, not post-simulation
 	var heroes = game.heroes;
@@ -144,7 +145,6 @@ function mimic(hero, board) {
 }
 
 var predictions = {};
-var allHits=0, allMisses=0;
 
 function evaluate(direction) {
 	var game = helpers.clone(gameData);
@@ -234,7 +234,7 @@ function evalMoves() {
 	}
 	
 	var avoid = helpers.Inverse[lastMove];
-	if(scores.hasOwnProperty(avoid)) scores[avoid]-=5*genes[8];  // bias against reversing our last turn
+	if(scores.hasOwnProperty(avoid)) scores[avoid]-=5*genes[8]*(1+numReverse*genes[17]);  // bias against reversing our last turn
 	
 	
 	return scores;
@@ -255,6 +255,8 @@ function newGame() {
 		};
 	}
 	myTurns = 0;
+	numReverse = 0;
+	lastMove = "Stay";
 }
 
 var lastTurn = 0;
@@ -275,6 +277,11 @@ function move(g, h /*, _genes*/) {
 		if(!best || scores[n]>scores[best]) best=n;
 	}
 	
+	if(lastMove && best===helpers.Inverse[lastMove]) {
+		numReverse++;
+	} else {
+		numReverse=0;
+	}
 	
 	//remember non-passing moves as "Stay" to avoid getting stuck in dead ends (we resist going backwards)
 	lastMove = helpers.passable(helpers.getMoveTile(gameData.board, myHero, best))?"Stay":best;
