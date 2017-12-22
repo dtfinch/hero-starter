@@ -1,24 +1,26 @@
 
 var genes = [
-	0.25705525739499346,
-	0.7047332860178742,
-	2.0923389903402523,
-	0.041602133731787797,
-	3.0244593629401035,
-	2.339039443505974,
-	0.1329146119773907,
-	0.6796924868704528,
-	0.041087431893391646,
-	2.958533001009915,
-	0.2162290112804867,
-	0.10536936815631785,
-	0.10167017866802613,
-	0.976364617108556,
-	5.77010656175007,
-	0.1544307850339903,
-	0.2528845962209047,
-	0.5402269796052228,
-	4.199794698100639
+	0.28575812157018454,
+	0.6918570256535702,
+	1.882405930560456,
+	0.04240796054476738,
+	3.1426347293210646,
+	2.06141467612403,
+	0.13327623725809512,
+	0.6757528804089187,
+	0.034415858234234105,
+	3.771462899590588,
+	0.27235735740206274,
+	0.12412014943578095,
+	0.09729184932041897,
+	1.3106619330630924,
+	7.0698317683269725,
+	0.17382470184912543,
+	0.31628274452277133,
+	0.5988099833254875,
+	4.159013741312634,
+	3.769189656859305,
+	1.8411649093022198
 ];
 
 var gameData, helpers;
@@ -96,7 +98,7 @@ function mimic(hero, board) {
 				if(healer) {
 					//may heal adjacent allies
 					var ally = helpers.findFirst(hero, board, helpers.isAlly);
-					if(ally && ally.health<=60) target = ally;
+					if(ally && ally.tile.health<=60) target = ally;
 				}
 				if(miner && !target) {
 					//may chase mine if full health
@@ -141,17 +143,27 @@ function mimic(hero, board) {
 	}
 
 	
-	if(target) return target.dir;
-	return "Stay";
+	var dir = "Stay";
+	
+	if(target) {
+		dir = target.dir;
+		
+		var tile = target.tile;
+		if(tile.type==="Hero" && !tile.dead) {
+			d.targets[tile.id] = myTurns;
+		}
+	}
+	
+	return dir;
 }
-
-var predictions = {};
 
 function evaluate(direction) {
 	var game = helpers.clone(gameData);
+	var nextHero;
 	
 	var mover = function(hero, board) {
 		if(hero.id===myHero.id) {
+			nextHero = hero;
 			return direction;
 		} else {
 			return mimic(hero, board);
@@ -160,12 +172,24 @@ function evaluate(direction) {
 	
 	//simulate a round of turns
 	helpers.simulate(game, mover);
+	var score = getTeamScore(game, myHero);
 	
-	predictions[direction] = game.heroes; 
-	
-	return getTeamScore(game, myHero);
+	return score;
 }
 
+var totalMines=0;
+
+function countMines() {
+	totalMines=0;
+	var wh = gameData.board.lengthOfSide;
+	var tiles = game.board.tiles;
+	for(var y=0; y<wh; y++) {
+		for(var x=0; x<wh; x++) {
+			var tile = tiles[y][x];
+			if(tile.type==="DiamondMine") totalMines++
+		}
+	}
+}
 
 
 
@@ -195,9 +219,16 @@ function evalMoves() {
 		return helpers.isAlly(tile) || helpers.isEnemy(tile) ||
 			helpers.isOtherMine(tile, myHero) || helpers.isWell(tile);
 	});
+	
 	var diamondBonus = genes[3]*0.25 + genes[18]*gameData.turn/800;
+
+	var rage = 1.0;
+	if(myHero.team==1 && totalMines==0) rage += genes[20]*gameData.turn/400;
+	
 	var best, bestValue;
 	var first = {};
+	var doomBringer;
+	var canHeal=false;
 	for(var i=0; i<targets.length; i++) {
 		var target = targets[i];
 		var tile = target.tile;
@@ -206,16 +237,42 @@ function evalMoves() {
 		if(helpers.isAlly(tile)) {
 			kind="ally";
 			value = genes[1]*(100-tile.health);
-			if(tile.healthGiven>0) value += genes[11]*(100-myHero.health); //treat healers like extra semi-wells. made almost no difference in testing :-/
+			if(tile.healthGiven>0) {
+				value += genes[11]*(100-myHero.health); //treat healers like extra semi-wells. made almost no difference in testing :-/
+				if(tile.distance==1) canHeal = true;
+			}
 		} else if(helpers.isEnemy(tile)) {
 			kind="enemy";
-			value = Math.max(genes[15]*30+genes[2]*(myHero.health-tile.health), 0);
+			value = Math.max(genes[15]*30+genes[2]*(myHero.health-tile.health), 0)*rage;
+			
+			//identify a specific scenario where we have no choice but to fight to the death, and no enemies are nearby, and I am their definite target
+			if(target.distance==1) {
+				if(!first[kind]) {
+					var d=dossier[tile.id];
+					//console.log(JSON.stringify(d));
+					if(d && d.fighter && d.targets[myHero.id]===myTurns) {
+						var maxHits = Math.floor((myHero.health-10)/30);
+						if(tile.health<=30+maxHits*30) { //if we even stand a chance
+							var justMe = true;
+							for(var nt in d.targets) {
+								if(+nt!==+myHero.id && d.targets[nt]===myTurns) justMe = false;
+							}
+							if(justMe) doomBringer=target;
+						}
+					}
+				} else {
+					doomBringer=0;
+				}
+			} else if(target.distance==2) {
+				doomBringer=0;
+			}
 		} else if(helpers.isOtherMine(tile, myHero)) {
 			kind="mine";
 			value = diamondBonus*Math.max(myHero.health-20, 0);
 		} else if(helpers.isWell(tile)) {
 			kind="well";
 			value = genes[4]*(100-myHero.health);
+			if(target.distance==1) canHeal = true;
 		}
 		
 		if(scores.hasOwnProperty(target.dir)) { // skip if validMove() identified the direction as pointless
@@ -230,6 +287,10 @@ function evalMoves() {
 			}
 		}
 	}
+	if(doomBringer && !canHeal && scores.hasOwnProperty(doomBringer.dir)) {
+		scores[doomBringer.dir] += genes[19]; 
+	}
+	
 	if(best) {
 		scores[best.dir] += genes[10]; 
 	}
@@ -252,12 +313,14 @@ function newGame() {
 		var h = heroes[i];
 		dossier[h.id] = {
 			type:"", fighter: false,
-			startX: h.distanceFromLeft, startY: h.distanceFromTop
+			startX: h.distanceFromLeft, startY: h.distanceFromTop,
+			targets: {}
 		};
 	}
 	myTurns = 0;
 	numReverse = 0;
 	lastMove = "Stay";
+	countMines();
 }
 
 var lastTurn = 0;
