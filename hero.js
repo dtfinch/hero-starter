@@ -1,32 +1,39 @@
 
 var genes = [
-	0.2783691798720658,
-	0.5701149759187473,
-	2.055018637912836,
-	0.04873160794670262,
-	2.935524574728102,
-	2.2650342674787622,
-	0.13608230613847522,
-	0.689573677962253,
-	0.0359046437980749,
-	4.143521861792886,
-	0.2887944605708039,
-	0.13767003202420855,
-	0.10449113753567647,
-	1.3052772754630124,
-	8.150870455128572,
-	0.13827359544020615,
-	0.327918257185843,
-	0.5819586218157319,
-	3.701656659246345,
-	2.261823541622484,
-	5.015370528570461
-];
+	1.1881756942524646,    //  0  resist staying in one place
+	1.2007832086497217,    //  1  per-health ranged value of approaching weaker ally
+	1.782579386382394,     //  2  per-health ranged value of approaching weaker enemy
+	0.017842914849880938,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
+	9.149096853777598,     //  4  per-health ranged value of wells
+	0.0977778105946547,    //  5  overall ranged score multiplier
+	43.78083241958109,     //  6  base value of a life (minus health)
+	2.594110445413536,     //  7  value of a mine (minus 20)
+	0.8233301170192282,    //  8  bias against reversing
+	4.564893110640817,     //  9  factor to scale the 1/distance value curve
+	0.6734699006947484,    // 10  give a bonus to the best long-range target
+	0.2522585242115707,    // 11  additional value of healer-type allies
+	0.11600476731094282,   // 12  how much to value our own health over the health of others.
+	1.4279861479944833,    // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
+	12.346314683185444,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
+	8.390931682036499,     // 15  base ranged value of an enemy
+	0.0909659878083316,    // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
+	0.2763970955370905,    // 17  growing per-turn bias factor against reversal moves
+	14.388496601057726,    // 18  additional ranged value per health of a mine at 1250 turns
+	3.6534084274239667,    // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
+	2.429027439149427,     // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
+	0.7604665127770834,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
+	0.49156536918871263,   // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
+	0.39978187107980584,   // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
+	0.4193211179917474,    // 24  added a second round to the prediction. this is its weight.
+	1.1310934467701643     // 25  indirect vs direct path bias.
+]; 
 
 var gameData, helpers;
 var myHero;
 var myTurns = 0;
 var numReverse = 0;
+
+var wantDiamonds = false;
 
 function getTeamScore(game, hero) { //note that hero is genuine copy, not post-simulation
 	var heroes = game.heroes;
@@ -41,11 +48,13 @@ function getTeamScore(game, hero) { //note that hero is genuine copy, not post-s
 				if(helpers.getAdjacentFilter(h, board, helpers.isWell).length>0) {
 					s += Math.min(100-h.health, 30) * genes[13];
 				}
-				
-				var minesTaken = h.mineCount-hero.mineCount;
-				if(minesTaken>0 && hero.health-h.health>20*minesTaken) s-=genes[14]; //penalize taking mines while under attack
+				//if(wantDiamonds) {
+					var minesTaken = h.mineCount-hero.mineCount;
+					if(minesTaken>0 && hero.health-h.health>20*minesTaken) s-=genes[14]; //penalize taking mines while under attack
+				//}
 			}
-			s += genes[6]*50 + genes[7]*30*h.mineCount;
+			s += genes[6];
+			/*if(wantDiamonds) */ s += (20+genes[7])*h.mineCount;
 			
 			score += s * ((h.team===hero.team)?1:-1);
 		}
@@ -66,6 +75,8 @@ function mimic(hero, board) {
 	if(hero.damageDone%20===10) d.fighter = true; //distinguish direct attacks from indirect
 	var fighter = d.fighter;
 	var target;
+	
+	if(hero.id===myHero.id) miner=healer=fighter=true;
 	
 	if(!healer && !miner && !fighter && (myTurns<=2 || d.moved) && myTurns<=10) {
 		//aggressor is so common, we want to just assume that until we observe better
@@ -139,7 +150,9 @@ function mimic(hero, board) {
 		} else if(d.moved) {
 			d.type = "survivor";
 			if(well) target = well;
-		} //else they're probably broken
+		} else {//else they're probably broken
+			d.type = "zombie";
+		}
 	}
 
 	
@@ -173,8 +186,37 @@ function evaluate(direction) {
 	//simulate a round of turns
 	helpers.simulate(game, mover);
 	var score = getTeamScore(game, myHero);
+	nextHero = helpers.clone(nextHero);
 	
-	return score;
+	//another round for good measure
+	helpers.simulate(game, mimic);
+	var s = getTeamScore(game, nextHero);
+	
+	
+	return score*(1-genes[24]) + s*genes[24];
+	
+	/*
+	//so slow...
+	nextHero = helpers.clone(nextHero);
+	var first = true, best = score;
+	var g;
+	for(var dir in helpers.Directions) {
+		if(!g) g = helpers.clone(game);
+		if(helpers.validMove(g.board, nextHero, dir)) {
+			direction = dir;
+			helpers.simulate(g, mover);
+			var s = getTeamScore(g, nextHero);
+			if(first || s>best) {
+				best = s;
+				first = false;
+			}
+			g=0;
+		}
+	}
+	
+	return score*0.9+best*0.1;
+	*/
+	
 }
 
 var totalMines=0;
@@ -183,6 +225,7 @@ function countMines() {
 	totalMines=0;
 	var wh = gameData.board.lengthOfSide;
 	var tiles = gameData.board.tiles;
+	
 	for(var y=0; y<wh; y++) {
 		for(var x=0; x<wh; x++) {
 			var tile = tiles[y][x];
@@ -191,12 +234,112 @@ function countMines() {
 	}
 }
 
+function needDiamonds() {
+	var td = gameData.totalTeamDiamonds;
+	
+	var loseByDefault = myHero.team!==0;
+	var weHaveDiamonds = td[myHero.team]>0;
+	var theyHaveDiamonds = false;
+	var theyHaveMore = false;
+	var theyHaveMiners = false;
+	var haveSame = false;
+	var theyHaveFighters = false;
+	
+	for(var i=0;i<td.length; i++) {
+		if(i!==myHero.team && td[i]>0) {
+			theyHaveDiamonds = true; //no longer used
+			if(td[i]>td[myHero.team]) theyHaveMore=true;
+			if(td[i]==td[myHero.team]) haveSame=true;
+		}
+	}
+	
+	var heroes = gameData.heroes;
+	for(var i=0; i<heroes.length; i++) {
+		var h = heroes[i];
+		if(h.team!==myHero.team && !h.dead) {
+			if(h.mineCount>0) theyHaveMiners = true;
+			var d = dossier[h.id];
+			if(d && d.fighter) theyHaveFighters = true;
+		}
+	}
+	
+	if(theyHaveMore || theyHaveMiners || !theyHaveFighters) {
+		return true;
+	}
 
+	if(loseByDefault) {
+		return haveSame || !weHaveDiamonds;
+	} else {
+		return false;;
+	}
+	
+	// if not, grabbing mines may still be useful. The enemy may not have diamonds now, but they might grab some later.
+	// But if they don't, then we don't need to ramp up our efforts unless we're in a lose-by-default scenario
+}
+
+function strategicImportance(hero) {
+	var tiles = helpers.getAdjacent(hero, gameData.board);
+	var friends=0, enemies=0, wells=0;
+	for(var i=0;i<tiles.length; i++) {
+		var tile = tiles[i];
+		if(tile.type==="Hero" && tile.id===myHero.id) continue;
+		
+		if(helpers.isAlly(tile, hero) && tile.healthGiven>0) friends++;
+		else if(helpers.isAlly(tile, hero)) enemies++;
+		else if(helpers.isWell(tile)) wells++;
+	}
+	var d = dossier[hero.id];
+	
+	var score = 30*enemies-40*friends; //an ally facing 1 enemy, or conversely an enemy facing 1 ally, is important
+	if(wells>0 && d.type!=="zombie") score-=30; //having a well is like having a 3/4 friend.
+	
+	if(score>40) score=0; // it's hopeless, so forget them
+	
+	
+	if(enemies>friends) { //additional importance
+		if(hero.healthGiven>0 || (wantDiamonds && hero.mineCount>0)) score+=20; //protect our miners
+		if(d && d.fighter) score+=10;
+	}
+	
+	return score * genes[23];
+}
 
 var lastMove="Stay";
 
+//avoid the long-range strategy getting us into situations that the short-range strategy will fight to keep us out of.
+//We get stuck in reversal loops when that happens. So just mark them for avoidance before pathfinding, and get more aggressive the more we reverse;
+function markDanger() {
+	//if(myHero.health<=20+10*numReverse) {
+		var heroes = gameData.heroes;
+		for(var i=0; i<heroes.length; i++) {
+			var h = heroes[i];
+			if(h.team!==myHero.team && !h.dead) {
+				var d = dossier[h.id];
+				var adj = helpers.getAdjacentFilter(h, gameData.board, helpers.passable);
+				for(var j=0; j<adj.length; j++) {
+					if(h.health>20) adj[j].danger = true;
+					if(d.fighter) { //if they're fighters, 2 away is dangerous too
+						var adj2 = helpers.getAdjacentFilter(adj[j], gameData.board, helpers.passable);
+						for(var k=0; k<adj2.length; k++) {
+							adj2[k].danger = true;
+						}
+					}
+				}
+			}
+		}
+	//}
+}
+
+function ramp(x) { //take 0-1 and adjust it to start with a steeper slope.
+	if(x<0) return 2*x; //handle impossible out-of-bounds, should that ever change
+	if(x>1) return 1;
+	return 2*x-x*x;
+}
+
 function evalMoves() {
 	var scores = {};
+	
+	wantDiamonds = needDiamonds();
 	
 	
 	/*
@@ -204,26 +347,55 @@ function evalMoves() {
 		For each direction, we guess how the next round of turns will play out,
 		then calculate a team score.
 	*/
+	var noStay = false;
 	for(var dir in helpers.Directions) {
 		if(helpers.validMove(gameData.board, myHero, dir)) {
 			scores[dir] = evaluate(dir);
-			if(dir==="Stay") scores[dir]-=5*genes[0]; // bias against staying in one place
+			if(dir==="Stay") {
+				scores[dir]-=genes[0]; // bias against staying in one place
+			} else  {
+				var tile = helpers.getMoveTile(gameData.board, myHero, dir);
+				if(helpers.isEnemy(tile) || (helpers.isAlly(tile) && tile.health<100) || (helpers.isWell(tile)&&myHero.health<100)) {
+					noStay = true; //sometimes staying is not acceptable, no matter what the simulator says.
+				}
+			}
 		}
 	}
+	
+	if(noStay && scores.hasOwnProperty("Stay")) delete scores["Stay"]; //patch over the symptoms of a serious bug I haven't found
 
+	markDanger();
+	
 	/*
 		Long range strategy:
 		Find all reachable targets to offset scores for their respective directions.
 	*/
-	var targets = helpers.pathFind(myHero, gameData.board, true, function(tile) {
-		return helpers.isAlly(tile) || helpers.isEnemy(tile) ||
-			helpers.isOtherMine(tile, myHero) || helpers.isWell(tile);
+	var directTargets = helpers.pathFind(myHero, gameData.board, true, function(tile) {
+		return helpers.isAlly(tile) ||	helpers.isOtherMine(tile, myHero) || helpers.isWell(tile) || helpers.isEnemy(tile);
+	});
+	//requery for safer paths to all the friendly targets. We'll combine scores with directBias later to decide which to favor
+	var indirectTargets = helpers.pathFind(myHero, gameData.board, true, function(tile) {
+		return helpers.isAlly(tile) ||	helpers.isOtherMine(tile, myHero) || helpers.isWell(tile);
+	}, 0, 0, function(tile) {
+		return tile.danger;
 	});
 	
-	var diamondBonus = genes[3]*0.25 + genes[18]*gameData.turn/800;
+	targets = directTargets.concat(indirectTargets);
+	
+	var directScore = myHero.health;
+	var indirectScore = (10*numReverse + 100-myHero.health)*genes[25];
+	var directBias = directScore/(directScore+indirectScore);
+	
+	
+	var diamondBonus = genes[3] + genes[18]*ramp(gameData.turn/1250);
+	
+	if(!wantDiamonds && diamondBonus>genes[21]) diamondBonus = 0; //we stop collecting diamonds if it turns out we won't need them
+	
 
 	var rage = 1.0;
-	if(myHero.team==1 && totalMines==0) rage += genes[20]*gameData.turn/400;
+	if(myHero.team==1 && totalMines==0) rage += genes[20]*ramp(gameData.turn/1250);
+	
+	var firstBonus = 1+genes[22]*numReverse;
 	
 	var best, bestValue;
 	var first = {};
@@ -234,25 +406,29 @@ function evalMoves() {
 		var tile = target.tile;
 		var value = 0;
 		var kind="???";
+		
+		var bias = (i<directTargets.length)?directBias:(1-directBias);
+		
+		var d = tile.type==="Hero" && dossier[tile.id];
+		
 		if(helpers.isAlly(tile)) {
 			kind="ally";
-			value = genes[1]*(100-tile.health);
+			value = bias * genes[1]*(100-tile.health+strategicImportance(tile));
 			if(tile.healthGiven>0) {
 				value += genes[11]*(100-myHero.health); //treat healers like extra semi-wells. made almost no difference in testing :-/
 				if(tile.distance==1) canHeal = true;
 			}
 		} else if(helpers.isEnemy(tile)) {
 			kind="enemy";
-			value = Math.max(genes[15]*30+genes[2]*(myHero.health-tile.health), 0)*rage;
+			value = Math.max(genes[15]+genes[2]*(myHero.health*rage-tile.health+strategicImportance(tile)), 0);
 			
 			//identify a specific scenario where we have no choice but to fight to the death, and no enemies are nearby, and I am their definite target
 			if(target.distance==1) {
 				if(!first[kind]) {
-					var d=dossier[tile.id];
 					//console.log(JSON.stringify(d));
 					if(d && d.fighter && d.targets[myHero.id]===myTurns) {
 						var maxHits = Math.floor((myHero.health-10)/30);
-						if(tile.health<=30+maxHits*30) { //if we even stand a chance
+						if(tile.health<=30+maxHits*30) { //if we even stand a chance.
 							var justMe = true;
 							for(var nt in d.targets) {
 								if(+nt!==+myHero.id && d.targets[nt]===myTurns) justMe = false;
@@ -268,35 +444,42 @@ function evalMoves() {
 			}
 		} else if(helpers.isOtherMine(tile, myHero)) {
 			kind="mine";
-			value = diamondBonus*Math.max(myHero.health-20, 0);
+			value = bias * diamondBonus*Math.max(myHero.health-20, 0);
 		} else if(helpers.isWell(tile)) {
 			kind="well";
-			value = genes[4]*(100-myHero.health);
+			value = bias * genes[4]*(100-myHero.health);
 			if(target.distance==1) canHeal = true;
 		}
 		
 		if(scores.hasOwnProperty(target.dir)) { // skip if validMove() identified the direction as pointless
 			var f = first[kind];
-			if(!f) { f = first[kind] = tile; }
+			var isFirst = false;
+			if(!f) { f = first[kind] = tile; isFirst = true; }
 			var adjustedDistance = target.distance - (f.distance-1)*genes[16]; //discount by nearest so we don't sit in our corner when there are no near targets.
 			
 			value /= 1+(adjustedDistance-1)*genes[9];
-			scores[target.dir] += genes[5]*0.1*value;
+			if(isFirst) {
+				value*=firstBonus; //fight the tendency to oscillate at intersections by giving first match a bonus
+			} else {
+				value/=firstBonus;
+			}
+			scores[target.dir] += genes[5]*value;
 			if(!best || value>bestValue) {
 				best = target; bestValue = value;
 			}
 		}
 	}
 	if(doomBringer && !canHeal && scores.hasOwnProperty(doomBringer.dir)) {
-		scores[doomBringer.dir] += genes[19]; 
+		//console.log("dooom!");
+		scores[doomBringer.dir] += genes[19]; // TODO this gene is going really low. Perhaps we're including less-dire situations and bringing them down by accident
 	}
 	
 	if(best) {
-		scores[best.dir] += genes[10]; 
+		scores[best.dir] += genes[10];
 	}
 	
 	var avoid = helpers.Inverse[lastMove];
-	if(scores.hasOwnProperty(avoid)) scores[avoid]-=5*genes[8]*(1+numReverse*genes[17]);  // bias against reversing our last turn
+	if(scores.hasOwnProperty(avoid)) scores[avoid]-=genes[8]*(1+numReverse*genes[17]);  // bias against reversing our last turn
 	
 	
 	return scores;
@@ -321,15 +504,16 @@ function newGame() {
 	numReverse = 0;
 	lastMove = "Stay";
 	countMines();
+	//if(myHero.team==1 && totalMines==0) console.log("raaage!");
 }
 
 var lastTurn = 0;
 
-function move(g, h /*, _genes*/) {
+function move(g, h, _genes) {
 	(helpers = h).setGameData(gameData = g); // :p
 	myHero = g.activeHero;
 	
-	//if(_genes) genes = _genes; //facilitate training
+	if(_genes && Array.isArray(_genes) && _genes.length===genes.length) genes = _genes; //facilitate training, but future-proof
 	
 	if(!dossier || gameData.turn<lastTurn) newGame();
 	
@@ -344,14 +528,13 @@ function move(g, h /*, _genes*/) {
 	if(lastMove && best===helpers.Inverse[lastMove]) {
 		numReverse++;
 	} else {
-		numReverse=0;
+		if(numReverse>0) numReverse--;
 	}
 	
 	//remember non-passing moves as "Stay" to avoid getting stuck in dead ends (we resist going backwards)
-	lastMove = helpers.passable(helpers.getMoveTile(gameData.board, myHero, best))?"Stay":best;
+	lastMove = helpers.passable(helpers.getMoveTile(gameData.board, myHero, best))?best:"Stay";
 	
 	lastTurn = gameData.turn;
-	
 	
 	return best;
 }
