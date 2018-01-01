@@ -105,8 +105,23 @@ function simulate(gameData, mover) {
 		gameData.heroTurnIndex++;
 		if(gameData.heroTurnIndex>=heroes.length) gameData.heroTurnIndex=0;
 	} while(gameData.heroTurnIndex!=startIndex);
+	clearNonsense(gameData);
 }
 
+function clearNonsense(game) {
+	// clear some of the stuff that interferes with cloning, like pathfinder dirt
+	var wh = gameData.board.lengthOfSide;
+	var tiles = game.board.tiles;
+	for(var y=0; y<wh; y++) {
+		for(var x=0; x<wh; x++) {
+			var tile = tiles[y][x];
+			if(tile.v) delete tile.v;
+			if(tile.p) delete tile.p;
+			if(tile.distance) delete tile.distance;
+			
+		}
+	}
+}
 
 function getMoveTile(board, hero, direction) {
 	var y = hero.distanceFromTop;
@@ -182,15 +197,15 @@ function getAdjacentFilter(tile, board, filter) {
 
 
 function grave(tile) {
-	return (tile.type==="Hero" && tile.dead) || tile.subType==="Bones";
+	return (tile.type==="Hero" && tile.dead) || tile.subType==="Bones" || tile.subType==="RedFainted" || tile.subType==="BlueFainted";
 }
 
 function passable(tile) {
-	return tile.type==="Unoccupied" || (tile.type==="Hero" && tile.dead);
+	return tile && (tile.type==="Unoccupied" || (tile.type==="Hero" && tile.dead));
 }
 
 function hittable(tile) {
-	return !passable(tile) && tile.type!=="Impassable";
+	return tile && !passable(tile) && tile.type!=="Impassable";
 }
 
 // I'd prefer to be consistent with findNearestObjectDirectionAndDistance if preferGraves is false, hence the reverse loop in pathTrace() and the order of directions in getAdjacent()
@@ -207,7 +222,7 @@ function pathTrace(dest, board, preferGraves, source) {
 			tile = undefined;
 			for(var i=adjacent.length-1; i>=0; i--) {
 				var neighbor = adjacent[i];
-				if(neighbor.distance!=distance || neighbor.v!==now || (neighbor!==source && !passable(neighbor))) continue;
+				if(neighbor.distance>distance || neighbor.v!==now || (neighbor!==source && !passable(neighbor))) continue;
 				
 				tile = neighbor;
 				if(!preferGraves || grave(tile)) break;
@@ -232,12 +247,13 @@ function direction(srcTile, destTile) {
 	}
 }
 
-function pathFind(source, board, preferGraves, filter, limit, maxDist) {
+function pathFind(source, board, preferGraves, filter, limit, maxDist, avoid) {
 	var targets = [];
 	var now = unique++;
 	
 	source = board.tiles[source.distanceFromTop][source.distanceFromLeft]; //correct for duplication in gameData
 	
+	var avoided = [];
 	var queue=[source], next=[];
 	source.v = now;
 	source.distance = 0;
@@ -274,7 +290,10 @@ function pathFind(source, board, preferGraves, filter, limit, maxDist) {
 					
 					if(!preferGraves) neighbor.p = tile;
 					
-					if(preferGraves && grave(neighbor)) {
+					if(avoid && avoid(neighbor)) {
+						neighbor.distance+=5;
+						avoided.push(neighbor);
+					} else if(preferGraves && grave(neighbor)) {
 						//trick to prefer grave paths
 						next.unshift(neighbor);
 					} else {
@@ -283,7 +302,17 @@ function pathFind(source, board, preferGraves, filter, limit, maxDist) {
 				}
 			}
 		}
-		if(next.length==0) break;
+		if(next.length==0) {
+			if(avoided.length>0) {
+				//low quality alternative to using a priority queue for poor paths
+				var d=avoided[0].distance;
+				do {
+					next.push(avoided.shift());
+				} while(avoided.length>0 && avoided[0].distance===d);
+			} else {
+				break;
+			}
+		}
 		queue = next;
 		next = [];
 	}
