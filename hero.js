@@ -182,7 +182,7 @@ var totalMines=0;
 function countMines() {
 	totalMines=0;
 	var wh = gameData.board.lengthOfSide;
-	var tiles = game.board.tiles;
+	var tiles = gameData.board.tiles;
 	for(var y=0; y<wh; y++) {
 		for(var x=0; x<wh; x++) {
 			var tile = tiles[y][x];
