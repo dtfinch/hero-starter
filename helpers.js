@@ -210,7 +210,7 @@ function hittable(tile) {
 
 // I'd prefer to be consistent with findNearestObjectDirectionAndDistance if preferGraves is false, hence the reverse loop in pathTrace() and the order of directions in getAdjacent()
 
-function pathTrace(dest, board, preferGraves, source) {
+function pathTrace(dest, board, preferGraves, source, alternate) {
 	var path = [dest];
 	var now = dest.v;
 	
@@ -218,6 +218,7 @@ function pathTrace(dest, board, preferGraves, source) {
 	while(tile.distance>0) {
 		if(preferGraves) {
 			var adjacent = getAdjacent(tile, board);
+			if(alternate) adjacent.reverse();
 			var distance = tile.distance-1;
 			tile = undefined;
 			for(var i=adjacent.length-1; i>=0; i--) {
@@ -264,13 +265,21 @@ function pathFind(source, board, preferGraves, filter, limit, maxDist, avoid) {
 			var tile = queue[index++];
 			
 			if(hittable(tile) && (!filter || filter(tile, source)) && tile!==source) {
-				var path =  pathTrace(tile, board, preferGraves, source);
-				targets.push({
+				var path = pathTrace(tile, board, preferGraves, source);
+				var  target = {
 					tile: tile,
 					path: path,
 					dir: direction(source, path[1]),
 					distance: tile.distance
-				});
+				};
+				if(preferGraves) { //todo rename that param
+					//look for an equal, but alternate path
+					var altPath = pathTrace(tile, board, preferGraves, source, true);
+					target.altPath = altPath;
+					target.altDir = direction(source, altPath[1]);
+				}
+				
+				targets.push(target);
 				if(limit && targets.length>=limit) return targets;
 			}
 			
