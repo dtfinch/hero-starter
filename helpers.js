@@ -350,7 +350,11 @@ function isWell(other) {
 }
 
 function isOtherMine(other, hero) {
-	return other.type==="DiamondMine" && (!other.owner || other.owner.team!==hero.team);
+	return other.type==="DiamondMine" && (!other.owner || other.owner.team!==hero.team || other.owner.dead);
+}
+
+function isAllyMine(other, hero) {
+	return other.type==="DiamondMine" && (other.owner && other.owner.team===hero.team && !other.owner.dead);
 }
 
 function isMine(other) {
@@ -371,6 +375,7 @@ module.exports = {
 	isWeakerEnemy: isWeakerEnemy,
 	isWell: isWell,
 	isOtherMine: isOtherMine,
+	isAllyMine: isAllyMine,
 	Directions: Directions,
 	validMove: validMove,
 	simulate: simulate,
