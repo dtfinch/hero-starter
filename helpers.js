@@ -63,12 +63,9 @@ function performMove(board, hero, direction) {
 	
 	//attack surroundings
 	if(!hero.dead) { //could have died taking mine
-		var neighbors = getAdjacent(hero, board);
+		var neighbors = getAdjacentFilter(hero, board, isEnemy, hero);
 		for(var i=0; i<neighbors.length; i++) {
-			var tile = neighbors[i];
-			if(isEnemy(tile, hero)) {
-				addHealth(tile, -20);
-			}
+			addHealth(neighbors[i], -20);
 		}
 	}
 	
@@ -179,7 +176,7 @@ function getAdjacent(tile, board) {
 	return ret;
 }
 
-function getAdjacentFilter(tile, board, filter) {
+function getAdjacentFilter(tile, board, filter, hero) {
 	var tiles = board.tiles;
 	var x = tile.distanceFromLeft;
 	var y = tile.distanceFromTop;
@@ -187,10 +184,10 @@ function getAdjacentFilter(tile, board, filter) {
 	var ret=[];
 	
 	var t;
-	y>0 && (t = tiles[y-1][x]) && filter(t) && ret.push(t);
-	x+1<board.lengthOfSide && (t = tiles[y][x+1]) && filter(t) && ret.push(t);
-	y+1<board.lengthOfSide && (t = tiles[y+1][x]) && filter(t) && ret.push(t);
-	x>0 && (t = tiles[y][x-1]) && filter(t) && ret.push(t);
+	y>0 && (t = tiles[y-1][x]) && filter(t,hero) && ret.push(t);
+	x+1<board.lengthOfSide && (t = tiles[y][x+1]) && filter(t,hero) && ret.push(t);
+	y+1<board.lengthOfSide && (t = tiles[y+1][x]) && filter(t,hero) && ret.push(t);
+	x>0 && (t = tiles[y][x-1]) && filter(t,hero) && ret.push(t);
 	
 	return ret;
 }
@@ -341,7 +338,8 @@ function isEnemy(other, hero) {
 }
 
 function isWeakerEnemy(other, hero) {
-	return other.type==="Hero" && !other.dead && other.team !== (hero||gameData.activeHero).team && other.health<hero.health;
+	hero = hero||gameData.activeHero;
+	return other.type==="Hero" && !other.dead && other.team !== hero.team && other.health<hero.health;
 }
 
 
