@@ -1,33 +1,33 @@
 
 var genes = [
-	1.1014237961453952,    //  0  resist staying in one place
-	1.104938668729329,     //  1  per-health ranged value of approaching weaker ally
-	1.7259039427582703,    //  2  per-health ranged value of approaching weaker enemy
-	0.018799829453841642,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
-	10.1424698272643,      //  4  per-health ranged value of wells
-	0.09192800284458334,   //  5  overall ranged score multiplier
-	43.53645591858791,     //  6  base value of a life (minus health)
-	2.8016699458511156,    //  7  value of a mine (minus 20)
-	0.8212039688292119,    //  8  bias against reversing
-	4.275730642840037,     //  9  factor to scale the 1/distance value curve
-	0.7040412186374828,    // 10  give a bonus to the best long-range target
-	0.27076292939861757,   // 11  additional value of healer-type allies
-	0.11612592259790584,   // 12  how much to value our own health over the health of others.
-	1.4347841280138962,    // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
-	12.974565255723032,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
-	10.250191419173017,    // 15  base ranged value of an enemy
-	0.08402901297038894,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
-	0.2524827629884044,    // 17  growing per-turn bias factor against reversal moves
-	12.518986564520878,    // 18  additional ranged value per health of a mine at 1250 turns
-	3.7066608675079125,    // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
-	2.4056893941847637,    // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
-	0.8112154968940921,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
-	0.5706750577999172,    // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
-	0.32297821685006967,   // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
-	0.42802041621156683,   // 24  added a second round to the prediction. this is its weight.
-	1.0299217478689597,    // 25  indirect vs direct path bias.
-	0.1092059964413712,    // 26  forward target bias (favoring targets that we chose last round)
-	1.1180434057375992     // 27  friendly mine capture penalty
+	1.1204785286021992,    //  0  resist staying in one place
+	0.9521865974525824,    //  1  per-health ranged value of approaching weaker ally
+	1.9763819641765246,    //  2  per-health ranged value of approaching weaker enemy
+	0.017454489158766975,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
+	7.122527208489634,     //  4  per-health ranged value of wells
+	0.10087780167697682,   //  5  overall ranged score multiplier
+	45.323853483185864,    //  6  base value of a life (minus health)
+	2.788594926187216,     //  7  value of a mine (minus 20)
+	0.8612728071321278,    //  8  bias against reversing
+	3.879124938158997,     //  9  factor to scale the 1/distance value curve
+	0.5890395040499015,    // 10  give a bonus to the best long-range target
+	0.3118890295720596,    // 11  additional value of healer-type allies
+	0.15193982359253513,   // 12  how much to value our own health over the health of others.
+	1.3596037492236115,    // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
+	11.706860346113524,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
+	10.296236303384205,    // 15  base ranged value of an enemy
+	0.09120146858858837,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
+	0.23724009841369317,   // 17  growing per-turn bias factor against reversal moves
+	10.53015574586737,     // 18  additional ranged value per health of a mine at 1250 turns
+	4.117219962984607,     // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
+	2.611569438776455,     // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
+	0.7311147880361497,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
+	0.5258206545101932,    // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
+	0.3081975681302898,    // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
+	0.46723690412239127,   // 24  added a second round to the prediction. this is its weight.
+	0.9240764035460316,    // 25  indirect vs direct path bias.
+	0.092378426148063,     // 26  forward target bias (favoring targets that we chose last round)
+	1.2699674342006606     // 27  friendly mine capture penalty
 ]; 
 
 var gameData, helpers;
@@ -37,7 +37,7 @@ var numReverse = 0;
 
 var wantDiamonds = false;
 
-function getTeamScore(game, hero) { //note that hero is genuine copy, not post-simulation
+function getTeamScore(game, hero, self_value) { //note that hero is genuine copy, not post-simulation
 	var heroes = game.heroes;
 	var board = game.board;
 	var score=0;
@@ -46,7 +46,7 @@ function getTeamScore(game, hero) { //note that hero is genuine copy, not post-s
 		if(!h.dead) {
 			var s = h.health;
 			if(h.id===hero.id) {
-				s += s*genes[12] + 200; //value our life above others
+				s += s*genes[12] + (self_value||200); //value our life above others
 				if(helpers.getAdjacentFilter(h, board, helpers.isWell).length>0) {
 					s += Math.min(100-h.health, 30) * genes[13];
 				}
@@ -54,6 +54,7 @@ function getTeamScore(game, hero) { //note that hero is genuine copy, not post-s
 					var minesTaken = h.mineCount-hero.mineCount;
 					if(minesTaken>0 && hero.health-h.health>20*minesTaken) s-=genes[14]; //penalize taking mines while under attack
 				//}
+				//console.log("me");
 			}
 			s += genes[6];
 			/*if(wantDiamonds) */ s += (20+genes[7])*h.mineCount;
@@ -65,16 +66,17 @@ function getTeamScore(game, hero) { //note that hero is genuine copy, not post-s
 }
 
 var dossier;
+var trial = false;
 
 //tries to classify a hero and guess their next move
 function mimic(hero, board) {
 	var d = dossier[hero.id];
 	
-	if(hero.distanceFromLeft!=d.startX || hero.distanceFromTop!=d.startY) d.moved = true;
+	if(!trial && (hero.distanceFromLeft!=d.startX || hero.distanceFromTop!=d.startY)) d.moved = true;
 
 	var miner = hero.diamondsEarned>0;
 	var healer = hero.healthGiven>0;
-	if(hero.damageDone%20===10) d.fighter = true; //distinguish direct attacks from indirect
+	if(!trial && hero.damageDone%20===10) d.fighter = true; //distinguish direct attacks from indirect
 	var fighter = d.fighter;
 	var target;
 	
@@ -105,7 +107,10 @@ function mimic(hero, board) {
 			//assume something wiser
 			d.type = "adventurer";
 			
-			if(well && hero.health<((well.distance===1)?100:50)) {
+			var dire = enemy && enemy.distance==1 && (hero.health>30||enemy.health<40);
+			
+			
+			if(well && hero.health<((well.distance===1)?100:50) && !dire) {
 				target = well;
 			} else {
 				if(healer) {
@@ -115,12 +120,12 @@ function mimic(hero, board) {
 				}
 				if(miner && !target) {
 					//may chase mine if full health
-					if(hero.health===100) target = mine;
+					if(hero.health===100 && !dire) target = mine;
 				}
 				
 				if(enemy && (!target || enemy.distance<target.distance)) {
 					var weakerEnemy = helpers.findFirst(hero, board, helpers.isWeakerEnemy);
-					if(weakerEnemy && weakerEnemy.distance<=enemy.distance) {
+					if(weakerEnemy && (weakerEnemy.distance<=enemy.distance||enemy.distance==2)) {
 						target = weakerEnemy;
 					} else {
 						target = enemy;
@@ -136,7 +141,7 @@ function mimic(hero, board) {
 			//assume priest
 			d.type = "priest";
 			
-			if(well && hero.health<((well.distance===1)?100:60)) { //ugly duplication
+			if(well && hero.health<60) { //ugly duplication
 				target = well;
 			} else {
 				target = helpers.findFirst(hero, board, helpers.isAlly);
@@ -164,7 +169,7 @@ function mimic(hero, board) {
 		dir = target.dir;
 		
 		var tile = target.tile;
-		if(tile.type==="Hero" && !tile.dead) {
+		if(tile.type==="Hero" && !tile.dead && !trial) {
 			d.targets[tile.id] = myTurns;
 		}
 	}
@@ -203,7 +208,7 @@ function forwardTargetBias(target, direct) {
 
 function evaluate(direction) {
 	var game = helpers.clone(gameData);
-	var nextHero;
+	var nextHero = myHero; //immediately replaced by mover, but assign just in case
 	
 	var mover = function(hero, board) {
 		if(hero.id===myHero.id) {
@@ -216,12 +221,14 @@ function evaluate(direction) {
 	
 	//simulate a round of turns
 	helpers.simulate(game, mover);
-	var score = getTeamScore(game, myHero);
+	var score = getTeamScore(game, myHero, 240); // short term has higher "self" value to avoid succumbing to pessimism comparing certain death now to possible death later.
 	nextHero = helpers.clone(nextHero);
 	
 	//another round for good measure
+	trial = true; //prevent first-round predictions from incorrectly updating the dossiers in 2nd round
 	helpers.simulate(game, mimic);
-	var s = getTeamScore(game, nextHero);
+	trial = false;
+	var s = getTeamScore(game, nextHero, 200);
 	
 	
 	return score*(1-genes[24]) + s*genes[24];
@@ -326,9 +333,10 @@ function strategicImportance(hero) {
 	
 	if(score>40) score=0; // it's hopeless, so forget them
 	
+	if(hero.healthGiven>0) score+=10; //protect or attack healers
 	
 	if(enemies>friends) { //additional importance
-		if(hero.healthGiven>0 || (wantDiamonds && hero.mineCount>0)) score+=20; //protect our miners
+		if(wantDiamonds && hero.mineCount>0) score+=20; //protect our miners
 		if(d && d.fighter) score+=10;
 	}
 	
@@ -552,6 +560,7 @@ function newGame() {
 	myTurns = 0;
 	numReverse = 0;
 	lastMove = "Stay";
+	lastTargets = undefined;
 	countMines();
 	//if(myHero.team==1 && totalMines==0) console.log("raaage!");
 }
@@ -563,12 +572,14 @@ function move(g, h, _genes) {
 	myHero = g.activeHero;
 	
 	if(_genes && Array.isArray(_genes) && _genes.length===genes.length) genes = _genes; //facilitate training, but future-proof
+	else if(_genes) console.log("Bad genes");
 	
 	if(!dossier || gameData.turn<lastTurn) newGame();
 	
 	myTurns++;
 	
 	var scores = evalMoves();
+	//console.log(JSON.stringify(scores));
 	var best;
 	for(var n in scores) {
 		if(!best || scores[n]>scores[best]) best=n;
