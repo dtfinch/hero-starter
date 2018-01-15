@@ -1,33 +1,33 @@
 
 var genes = [
-	1.1204785286021992,    //  0  resist staying in one place
-	0.9521865974525824,    //  1  per-health ranged value of approaching weaker ally
-	1.9763819641765246,    //  2  per-health ranged value of approaching weaker enemy
-	0.017454489158766975,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
-	7.122527208489634,     //  4  per-health ranged value of wells
-	0.10087780167697682,   //  5  overall ranged score multiplier
-	45.323853483185864,    //  6  base value of a life (minus health)
-	2.788594926187216,     //  7  value of a mine (minus 20)
-	0.8612728071321278,    //  8  bias against reversing
-	3.879124938158997,     //  9  factor to scale the 1/distance value curve
-	0.5890395040499015,    // 10  give a bonus to the best long-range target
-	0.3118890295720596,    // 11  additional value of healer-type allies
-	0.15193982359253513,   // 12  how much to value our own health over the health of others.
-	1.3596037492236115,    // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
-	11.706860346113524,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
-	10.296236303384205,    // 15  base ranged value of an enemy
-	0.09120146858858837,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
-	0.23724009841369317,   // 17  growing per-turn bias factor against reversal moves
-	10.53015574586737,     // 18  additional ranged value per health of a mine at 1250 turns
-	4.117219962984607,     // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
-	2.611569438776455,     // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
-	0.7311147880361497,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
-	0.5258206545101932,    // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
-	0.3081975681302898,    // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
-	0.46723690412239127,   // 24  added a second round to the prediction. this is its weight.
-	0.9240764035460316,    // 25  indirect vs direct path bias.
-	0.092378426148063,     // 26  forward target bias (favoring targets that we chose last round)
-	1.2699674342006606     // 27  friendly mine capture penalty
+	1.0977925125863919,    //  0  resist staying in one place
+	0.9098738711552902,    //  1  per-health ranged value of approaching weaker ally
+	2.024470907637409,     //  2  per-health ranged value of approaching weaker enemy
+	0.017605512714467954,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
+	7.731151988864458,     //  4  per-health ranged value of wells
+	0.10088881924030708,   //  5  overall ranged score multiplier
+	40.7757981541587,      //  6  base value of a life (minus health)
+	2.893874061207753,     //  7  value of a mine (minus 20)
+	0.8599578621318602,    //  8  bias against reversing
+	3.7970211518912076,    //  9  factor to scale the 1/distance value curve
+	0.5751172254119068,    // 10  give a bonus to the best long-range target
+	0.34724413289879397,   // 11  additional value of healer-type allies
+	0.15625585517719567,   // 12  how much to value our own health over the health of others.
+	1.3133815245441254,    // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
+	13.025280407525333,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
+	11.149537411413743,    // 15  base ranged value of an enemy
+	0.09664306272648338,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
+	0.2438186552164264,    // 17  growing per-turn bias factor against reversal moves
+	10.057777531386446,    // 18  additional ranged value per health of a mine at 1250 turns
+	4.359964911169134,     // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
+	2.651679471466328,     // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
+	0.8467791525512848,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
+	0.5275889827747552,    // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
+	0.33018310634391035,   // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
+	0.48510745828312546,   // 24  added a second round to the prediction. this is its weight.
+	0.9447669013313503,    // 25  indirect vs direct path bias.
+	0.08117001248704661,   // 26  forward target bias (favoring targets that we chose last round)
+	1.5625660544646818     // 27  friendly mine capture penalty
 ]; 
 
 var gameData, helpers;
