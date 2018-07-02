@@ -1,33 +1,33 @@
 
 var genes = [
-	1.0977925125863919,    //  0  resist staying in one place
-	0.9098738711552902,    //  1  per-health ranged value of approaching weaker ally
-	2.024470907637409,     //  2  per-health ranged value of approaching weaker enemy
-	0.017605512714467954,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
-	7.731151988864458,     //  4  per-health ranged value of wells
-	0.10088881924030708,   //  5  overall ranged score multiplier
-	40.7757981541587,      //  6  base value of a life (minus health)
-	2.893874061207753,     //  7  value of a mine (minus 20)
-	0.8599578621318602,    //  8  bias against reversing
-	3.7970211518912076,    //  9  factor to scale the 1/distance value curve
-	0.5751172254119068,    // 10  give a bonus to the best long-range target
-	0.34724413289879397,   // 11  additional value of healer-type allies
-	0.15625585517719567,   // 12  how much to value our own health over the health of others.
-	1.3133815245441254,    // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
-	13.025280407525333,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
-	11.149537411413743,    // 15  base ranged value of an enemy
-	0.09664306272648338,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
-	0.2438186552164264,    // 17  growing per-turn bias factor against reversal moves
-	10.057777531386446,    // 18  additional ranged value per health of a mine at 1250 turns
-	4.359964911169134,     // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
-	2.651679471466328,     // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
-	0.8467791525512848,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
-	0.5275889827747552,    // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
-	0.33018310634391035,   // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
-	0.48510745828312546,   // 24  added a second round to the prediction. this is its weight.
-	0.9447669013313503,    // 25  indirect vs direct path bias.
-	0.08117001248704661,   // 26  forward target bias (favoring targets that we chose last round)
-	1.5625660544646818     // 27  friendly mine capture penalty
+	1.102748598157832,    //  0  resist staying in one place
+	1.5574776161072565,   //  1  per-health ranged value of approaching weaker ally
+	4.078728917504277,    //  2  per-health ranged value of approaching weaker enemy
+	0.01821224472243556,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
+	6.592943994518124,    //  4  per-health ranged value of wells
+	0.10087677006343096,  //  5  overall ranged score multiplier
+	40.35149740541458,    //  6  base value of a life (minus health)
+	3.1349899821494995,   //  7  value of a mine (minus 20)
+	1.0630503287062398,   //  8  bias against reversing
+	3.592617997307491,    //  9  factor to scale the 1/distance value curve
+	0.6071344963492312,   // 10  give a bonus to the best long-range target
+	0.4633692906616116,   // 11  additional value of healer-type allies
+	0.23612293818984953,  // 12  how much to value our own health over the health of others.
+	1.1272321003222978,   // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
+	17.00856033591141,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
+	13.838517008355801,   // 15  base ranged value of an enemy
+	0.1083412354856287,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
+	0.23233425149584538,  // 17  growing per-turn bias factor against reversal moves
+	8.611883381068592,    // 18  additional ranged value per health of a mine at 1250 turns
+	3.644892899968172,    // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
+	2.8824790374600835,   // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
+	1.101630323165743,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
+	0.4204407102338968,   // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
+	0.3930374996614871,   // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
+	0.5421358907993779,   // 24  added a second round to the prediction. this is its weight.
+	1.2404339287041233,   // 25  indirect vs direct path bias.
+	0.09188677477108365,  // 26  forward target bias (favoring targets that we chose last round)
+	2.0218726801256084    // 27  friendly mine capture penalty
 ]; 
 
 var gameData, helpers;
@@ -36,6 +36,8 @@ var myTurns = 0;
 var numReverse = 0;
 
 var wantDiamonds = false;
+
+var loseByDefault = false;
 
 function getTeamScore(game, hero, self_value) { //note that hero is genuine copy, not post-simulation
 	var heroes = game.heroes;
@@ -275,7 +277,7 @@ function countMines() {
 function needDiamonds() {
 	var td = gameData.totalTeamDiamonds;
 	
-	var loseByDefault = myHero.team!==0;
+	//var loseByDefault = myHero.team!==0; not anymore
 	var weHaveDiamonds = td[myHero.team]>0;
 	var theyHaveDiamonds = false;
 	var theyHaveMore = false;
@@ -401,7 +403,7 @@ function evalMoves() {
 				}
 				if(helpers.isAllyMine(tile,myHero)) {
 					//I've caught him taking mines without any incentive, as an alternative to staying or moving. Provide some disincentive (but taking from a dying ally may be prudent)
-					scores[dir] -= genes[27]*(100-tile.owner.health)/100;
+					scores[dir] -= genes[27]*tile.owner.health/100;
 				}
 			}
 		}
@@ -438,7 +440,7 @@ function evalMoves() {
 	
 
 	var rage = 1.0;
-	if(myHero.team==1 && totalMines==0) rage += genes[20]*ramp(gameData.turn/1250);
+	if(loseByDefault && totalMines==0) rage += genes[20]*ramp(gameData.turn/1250);
 	
 	var firstBonus = 1+genes[22]*numReverse;
 	
@@ -565,6 +567,25 @@ function newGame() {
 	//if(myHero.team==1 && totalMines==0) console.log("raaage!");
 }
 
+function checkTieBreaker() { //previously ties went to blue (team 0). Now it'll be whoever has the most survivors.
+	var heroes = gameData.heroes;
+	var alive = [];
+	for(var i=0; i<heroes.length; i++) {
+		var h = heroes[i];
+		if(!h.dead) alive[h.team] = (alive[h.team]||0)+1;
+	}
+	var best=0, bestTeam=0;
+	for(i=0;i<alive.length;i++) {
+		var a = alive[i]||0;
+		if(a>best) {
+			best = a;
+			bestTeam = i;
+		}
+	}
+	loseByDefault = myHero.team!=bestTeam;
+}
+
+
 var lastTurn = 0;
 
 function move(g, h, _genes) {
@@ -577,6 +598,8 @@ function move(g, h, _genes) {
 	if(!dossier || gameData.turn<lastTurn) newGame();
 	
 	myTurns++;
+	
+	checkTieBreaker();
 	
 	var scores = evalMoves();
 	//console.log(JSON.stringify(scores));
