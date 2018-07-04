@@ -34,6 +34,7 @@ var gameData, helpers;
 var myHero;
 var myTurns = 0;
 var numReverse = 0;
+var betrayal = 0;
 
 var wantDiamonds = false;
 
@@ -417,8 +418,15 @@ function evalMoves() {
 		Long range strategy:
 		Find all reachable targets to offset scores for their respective directions.
 	*/
+	var anyEnemies = false;
+	
 	var directTargets = helpers.pathFind(myHero, gameData.board, true, function(tile) {
-		return helpers.isAlly(tile) ||	helpers.isOtherMine(tile, myHero) || helpers.isWell(tile) || helpers.isEnemy(tile);
+		if(helpers.isAlly(tile) || helpers.isOtherMine(tile, myHero) || helpers.isWell(tile)) return true;
+		if(helpers.isEnemy(tile)) {
+			anyEnemies = true;
+			return true;
+		}
+		return false;
 	});
 	//requery for safer paths to all the friendly targets. We'll combine scores with directBias later to decide which to favor
 	var indirectTargets = helpers.pathFind(myHero, gameData.board, true, function(tile) {
@@ -436,14 +444,14 @@ function evalMoves() {
 	
 	var diamondBonus = genes[3] + genes[18]*ramp(gameData.turn/1250);
 	
-	if(!wantDiamonds && diamondBonus>genes[21]) diamondBonus = 0; //we stop collecting diamonds if it turns out we won't need them
+	if(!wantDiamonds && diamondBonus>genes[21] && anyEnemies) diamondBonus = 0; //we stop collecting diamonds if it turns out we won't need them
 	
 
 	var rage = 1.0;
 	if(loseByDefault && totalMines==0) rage += genes[20]*ramp(gameData.turn/1250);
 	
 	var firstBonus = 1+genes[22]*numReverse;
-	
+	var expectHeals = false;
 	var best, bestValue;
 	var first = {};
 	var doomBringer;
@@ -462,10 +470,16 @@ function evalMoves() {
 		
 		if(helpers.isAlly(tile)) {
 			kind="ally";
-			value = bias * genes[1]*(100-tile.health+strategicImportance(tile));
-			if(tile.healthGiven>0) {
+			var importance = strategicImportance(tile);
+			importance = importance*0.1 + 0.9*Math.min(importance, 100-tile.health); //reduce importance of full health allies so we don't orbit them
+			
+			value = bias * genes[1]*(100-tile.health+importance);
+			if(tile.healthGiven>0 && betrayal<8) {
 				value += genes[11]*(100-myHero.health); //treat healers like extra semi-wells. made almost no difference in testing :-/
-				if(tile.distance==1) canHeal = true;
+				if(tile.distance==1) {
+					canHeal = true;
+					expectHeals = true;
+				}
 			}
 		} else if(helpers.isEnemy(tile)) {
 			kind="enemy";
@@ -524,6 +538,8 @@ function evalMoves() {
 			}
 		}
 	}
+	if(expectHeals && myHero.health<100) betrayal++; //prevent lingering around a healer if they're not healing us
+	
 	if(doomBringer && !canHeal && scores.hasOwnProperty(doomBringer.dir)) {
 		//console.log("dooom!");
 		scores[doomBringer.dir] += genes[19]; // TODO this gene is going really low. Perhaps we're including less-dire situations and bringing them down by accident
@@ -539,7 +555,6 @@ function evalMoves() {
 	
 	var avoid = helpers.Inverse[lastMove];
 	if(scores.hasOwnProperty(avoid)) scores[avoid]-=genes[8]*(1+numReverse*genes[17]);  // bias against reversing our last turn
-	
 	
 	return scores;
 }
@@ -563,6 +578,8 @@ function newGame() {
 	numReverse = 0;
 	lastMove = "Stay";
 	lastTargets = undefined;
+
+	betrayal = 0;
 	countMines();
 	//if(myHero.team==1 && totalMines==0) console.log("raaage!");
 }
@@ -598,6 +615,7 @@ function move(g, h, _genes) {
 	if(!dossier || gameData.turn<lastTurn) newGame();
 	
 	myTurns++;
+	if(myHero.health===100) betrayal = 0; //used to detect if an ally isn't healing as expected
 	
 	checkTieBreaker();
 	
