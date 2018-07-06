@@ -1,33 +1,34 @@
 
 var genes = [
-	1.102748598157832,    //  0  resist staying in one place
-	1.5574776161072565,   //  1  per-health ranged value of approaching weaker ally
-	4.078728917504277,    //  2  per-health ranged value of approaching weaker enemy
-	0.01821224472243556,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
-	6.592943994518124,    //  4  per-health ranged value of wells
-	0.10087677006343096,  //  5  overall ranged score multiplier
-	40.35149740541458,    //  6  base value of a life (minus health)
-	3.1349899821494995,   //  7  value of a mine (minus 20)
-	1.0630503287062398,   //  8  bias against reversing
-	3.592617997307491,    //  9  factor to scale the 1/distance value curve
-	0.6071344963492312,   // 10  give a bonus to the best long-range target
-	0.4633692906616116,   // 11  additional value of healer-type allies
-	0.23612293818984953,  // 12  how much to value our own health over the health of others.
-	1.1272321003222978,   // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
-	17.00856033591141,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
-	13.838517008355801,   // 15  base ranged value of an enemy
-	0.1083412354856287,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
-	0.23233425149584538,  // 17  growing per-turn bias factor against reversal moves
-	8.611883381068592,    // 18  additional ranged value per health of a mine at 1250 turns
-	3.644892899968172,    // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
-	2.8824790374600835,   // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
-	1.101630323165743,    // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
-	0.4204407102338968,   // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
-	0.3930374996614871,   // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
-	0.5421358907993779,   // 24  added a second round to the prediction. this is its weight.
-	1.2404339287041233,   // 25  indirect vs direct path bias.
-	0.09188677477108365,  // 26  forward target bias (favoring targets that we chose last round)
-	2.0218726801256084    // 27  friendly mine capture penalty
+	1.1088872243653194,    //  0  resist staying in one place
+	1.5123799558315163,    //  1  per-health ranged value of approaching weaker ally
+	4.211817916935385,     //  2  per-health ranged value of approaching weaker enemy
+	0.017992181351451395,  //  3  ranged base-value of grabbing mines, per my health above 20 (see also [18])
+	6.551047678623945,     //  4  per-health ranged value of wells
+	0.10089999999999986,   //  5  overall ranged score multiplier
+	40.2384743433506,      //  6  base value of a life (minus health)
+	3.050743196537282,     //  7  value of a mine (minus 20)
+	1.0962340644371829,    //  8  bias against reversing
+	3.517748149335526,     //  9  factor to scale the 1/distance value curve
+	0.5994503638662929,    // 10  give a bonus to the best long-range target
+	0.4727004189341741,    // 11  additional value of healer-type allies
+	0.24570405328715644,   // 12  how much to value our own health over the health of others.
+	1.1312196654307773,    // 13  value (per missing health up to 30) of landing adjacent to a well. If it exceeds 1+genes[12] then masochism may set in, but the optimizer keeps arriving there.
+	17.002642507266067,    // 14  penalty for mine-taking moves where we'd expect to take additional damage
+	14.067962165092862,    // 15  base ranged value of an enemy
+	0.10952136193558946,   // 16  discount distances by the nearest distance of that object type, enabling subsequent targets to follow a different value scale.
+	0.2363650084309586,    // 17  growing per-turn bias factor against reversal moves
+	9.073665270878829,     // 18  additional ranged value per health of a mine at 1250 turns
+	3.4701666186074527,    // 19  bonus to attacking a neighbor we'd identified as a "doom bringer" that we can overtake if they run like an aggressor, but who would kill us if we ran first.
+	2.8246570461327827,    // 20  turn-1250 "rage" multiplier to value of chasing enemies if we're in lose-by-default zero-mine round.
+	1.080191097156615,     // 21  if we don't really need diamonds, we stop pursuing (ranged) when diamondBonus reaches this value
+	0.3958832548205341,    // 22  each time we reverse direction, we increase the ranged value we put on the first instance of something by this, while reducing subsequent
+	0.3730444009772627,    // 23  strategic bonus multiplier, from looking at hero/friend and their adjacent tiles
+	0.5347852022899561,    // 24  added a second round to the prediction. this is its weight.
+	1.166643019627255,     // 25  indirect vs direct path bias.
+	0.09182312884920776,   // 26  forward target bias (favoring targets that we chose last round)
+	2.015664209818808,     // 27  friendly mine capture penalty
+	0.1009281904688538     // 28  cap factor on strategic value of ally when value+health>100, so we don't stick to them
 ]; 
 
 var gameData, helpers;
@@ -471,10 +472,10 @@ function evalMoves() {
 		if(helpers.isAlly(tile)) {
 			kind="ally";
 			var importance = strategicImportance(tile);
-			importance = importance*0.1 + 0.9*Math.min(importance, 100-tile.health); //reduce importance of full health allies so we don't orbit them
+			importance = importance*genes[28] + (1-genes[28])*Math.min(importance, 100-tile.health); //reduce importance of full health allies so we don't orbit them
 			
 			value = bias * genes[1]*(100-tile.health+importance);
-			if(tile.healthGiven>0 && betrayal<8) {
+			if(tile.healthGiven>0 && betrayal<8) { // 8 is arbitrary
 				value += genes[11]*(100-myHero.health); //treat healers like extra semi-wells. made almost no difference in testing :-/
 				if(tile.distance==1) {
 					canHeal = true;
