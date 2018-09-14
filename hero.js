@@ -387,7 +387,7 @@ function markDanger() {
 }
 
 function canBeat(a, b, h) {
-	for(;;) {
+	for(var i=0; i<10; i++) { //loop paranoia
 		b-=h;
 		if(b<=0) return true;
 		h=30;
